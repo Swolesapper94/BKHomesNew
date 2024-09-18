@@ -1,0 +1,60 @@
+import requests
+from bs4 import BeautifulSoup
+import csv
+from datetime import datetime, timedelta
+
+csv_file = '/Users/peterscheuermann/Documents/Python Projects/Outputs/Test_BKHomes.csv'
+base_url = "https://www.pinellas.realforeclose.com/index.cfm?zaction=AUCTION&zmethod=DAYLIST&AuctionDate="
+
+start_date = datetime(2024, 9, 1)
+end_date = datetime(2024, 9, 30)
+
+headers = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.83 Safari/537.36",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+}
+
+def scrape_auction_data(auction_date):
+    try:
+        url = f"{base_url}{auction_date.strftime('%m/%d/%Y')}"
+        print(f"Scraping URL: {url}")
+        
+        response = requests.get(url, headers=headers)
+        if response.status_code != 200:
+            print(f"Failed to load page for {auction_date.strftime('%m/%d/%Y')} (status code: {response.status_code})")
+            return
+        
+        soup = BeautifulSoup(response.content, 'html.parser')
+        auction_stats = soup.find_all('div', class_='AUCTIONSTATS')
+        
+        if not auction_stats:
+            print(f"No auctions found for {auction_date.strftime('%m/%d/%Y')}")
+            return
+        
+        for auction in auction_stats:
+            try:
+                status_label = auction.find(class_="ASTAT_MSGB").text.strip()
+                if "Auction Starts" in status_label:
+                    case_number = auction.find('div', class_="CASE_NUMBER").text.strip()
+                    auction_date_text = auction.find('div', class_="ASTAT_DATA").text.strip()
+                    property_address = auction.find('div', class_="PROPERTY_ADDRESS").text.strip()
+                    opening_bid = auction.find('div', class_="OPENING_BID").text.strip()
+
+                    with open(csv_file, 'a', newline='') as csvfile:
+                        writer = csv.writer(csvfile)
+                        writer.writerow([case_number, auction_date_text, property_address, opening_bid, status_label])
+
+                    print(f"Scraped data for {auction_date_text}: {case_number}, {property_address}, {opening_bid}, {status_label}")
+            except Exception as e:
+                print(f"Error extracting auction data: {str(e)}")
+
+    except Exception as e:
+        print(f"Error loading auction data for {auction_date.strftime('%m/%d/%Y')}: {str(e)}")
+
+current_date = start_date
+while current_date <= end_date:
+    scrape_auction_data(current_date)
+    current_date += timedelta(days=1)
+
+print("Scraping complete.")
